@@ -2,7 +2,7 @@ import { test, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { campaignInputSchema } from '../packages/shared/src/index.js';
-import { loadConfig, META_SCOPES } from '../apps/server/src/config.js';
+import { loadConfig, META_COMMENT_SCOPES, META_SCOPES } from '../apps/server/src/config.js';
 import { MetaClient, MetaError } from '../apps/server/src/meta.js';
 import { createCampaign, changeJob, saveIdentity } from '../apps/server/src/services.js';
 import { recoverStaleJobs, runOneJob } from '../apps/server/src/queue.js';
@@ -14,7 +14,7 @@ before(async () => { db = await testDatabase(); });
 after(async () => { await db?.close(); });
 beforeEach(async () => {
   await db.query('TRUNCATE app_users CASCADE'); await db.query('TRUNCATE page_lanes');
-  const identity = await saveIdentity(db, { facebookId: '900', name: 'Publisher', token: 'fixture-user', permissions: META_SCOPES, expiresAt: null, dataExpiresAt: null,
+  const identity = await saveIdentity(db, { facebookId: '900', name: 'Publisher', token: 'fixture-user', permissions: [...META_SCOPES, ...META_COMMENT_SCOPES], expiresAt: null, dataExpiresAt: null,
     pages: [{ id: '9001', name: 'Publishing Page', access_token: 'fixture-page', tasks: ['CREATE_CONTENT', 'MODERATE'] }] }, config);
   workspaceId = identity.workspaceId;
   pageId = (await db.query('SELECT id FROM pages WHERE workspace_id=$1', [workspaceId])).rows[0].id;
