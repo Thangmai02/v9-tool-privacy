@@ -142,6 +142,11 @@ Không xóa database volume khi nâng cấp. Sao lưu PostgreSQL cùng khóa mã
 
 ## Mở cho người dùng ngoài app
 
+**[Hướng dẫn mở V9 cho người ngoài trên MacBook, Windows và điện thoại](docs/PUBLIC_ACCESS.md)** — phân biệt URL bản demo với URL backend thật, các quyền Meta cần thiết và cách kiểm thử với tài khoản không có vai trò app.
+
+Đăng nhập OAuth kiểu scope mặc định chỉ yêu cầu các quyền quản lý và đăng bài; quyền bình luận chỉ được xin khi đặt `META_ENABLE_COMMENTS=true`. Nếu dùng Facebook Login for Business Configuration, cần quản lý danh sách quyền ngay trong Meta Dashboard.
+
+
 Đăng nhập chính thức giúp khách hàng cấp quyền cho các Page họ quản lý. Họ không cần đưa mật khẩu hay cookie cho V9. **App Review/Advanced Access, business verification và yêu cầu Tech Provider của Meta vẫn áp dụng**. Chỉ viết mã hoặc bật website không mở các quyền cho mọi tài khoản.
 
 Trước khi thương mại hóa cần hoàn tất tích hợp thật, các bước xét duyệt Meta, hạ tầng và backup, giới hạn theo gói, billing/đội nhóm nếu cần, kiểm thử tải và rà soát bảo mật. Xem [kiến trúc và phạm vi](docs/ARCHITECTURE.md).

@@ -41,6 +41,8 @@ Nếu app hiện tại của bạn dùng Facebook Login kiểu scope, mã nguồ
 
 Người cấp quyền phải có nhiệm vụ phù hợp trên Page: `CREATE_CONTENT` để đăng nội dung và `MODERATE` để bình luận. Việc có Page trong danh sách không tự động chứng minh được phép thực hiện mọi hành động.
 
+**Để mở cho nhiều người dùng:** luồng đăng nhập OAuth kiểu `scope` mặc định chỉ yêu cầu `public_profile`, `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`. Hai quyền bình luận (`pages_read_user_content`, `pages_manage_engagement`) là tùy chọn; chỉ đặt `META_ENABLE_COMMENTS=true` trên máy chủ khi đã được Meta phê duyệt và muốn dùng chức năng bình luận. Nếu dùng `META_LOGIN_CONFIG_ID`, Meta Facebook Login for Business Configuration quyết định tập quyền: cần bỏ các quyền chưa được phê duyệt trong Configuration, vì `META_ENABLE_COMMENTS` không chỉnh được quyền của Configuration. Người dùng thiếu quyền bình luận vẫn có thể quản lý và đăng bài, nhưng không thể sử dụng tính năng gửi bình luận đầu tiên. Không mô tả chức năng đọc bình luận người dùng là đã triển khai ở v0.1.**
+
 **Không xin `pages_manage_metadata` ở v0.1:** bản này chưa đăng ký webhook Page hoặc cung cấp hộp thư bình luận tập trung. Chỉ thêm quyền đó khi thực sự triển khai tính năng tương ứng.
 
 **Không xin `business_management` chỉ để đăng bài:** flow này không cần quản lý Business Manager. Chỉ thêm khi một module cụ thể cần quyền đó và có thể trình diễn chức năng cho Meta.
@@ -77,6 +79,7 @@ Dùng file `.env.example` và hướng dẫn triển khai trong README để đ�
 | `META_APP_SECRET` | App Secret, đặt bằng secret/environment của backend. |
 | `META_LOGIN_CONFIG_ID` | Configuration ID cấp **User access token** trong Facebook Login for Business. Chỉ để trống khi app của bạn dùng flow scope tương thích. |
 | `META_GRAPH_VERSION` | `v27.0` cho bản đang kiểm thử. |
+| `META_ENABLE_COMMENTS` | `false` mặc định; đặt `true` chỉ với luồng scope khi các quyền bình luận đã được phê duyệt. Với Business Login, quyền do Configuration ID quyết định. |
 | `DATABASE_URL` | Chuỗi kết nối PostgreSQL của môi trường triển khai. |
 | `TOKEN_ENCRYPTION_KEY` | Khóa ngẫu nhiên 32 byte, mã hóa base64. |
 | `NODE_ENV` | `production` trên máy chủ production. |
