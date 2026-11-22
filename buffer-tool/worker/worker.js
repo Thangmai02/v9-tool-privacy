@@ -51,7 +51,7 @@ function dataFor(action, payload, env) {
   if (action === "publish") {
     if (typeof payload.channelId !== "string" || !payload.channelId || payload.channelId.length > 256) throw new Error("Channel ID không hợp lệ.");
     if (env.ALLOWED_CHANNEL_ID && payload.channelId !== env.ALLOWED_CHANNEL_ID) throw new Error("Fanpage không được phép sử dụng.");
-    if (typeof payload.text !== "string" || payload.text.length > 60000) throw new Error("Nội dung bài không hợp lệ.");
+    if (typeof payload.text !== "string" || payload.text.length > 5000) throw new Error("Nội dung bài không hợp lệ.");
     if (!["shareNow","addToQueue","customScheduled"].includes(payload.mode)) throw new Error("Chế độ xuất bản không hợp lệ.");
     if (!Array.isArray(payload.assets) || payload.assets.length > 10) throw new Error("Số lượng tài sản media không hợp lệ.");
     if (!payload.text && !payload.assets.length) throw new Error("Bài viết phải có nội dung hoặc media.");
