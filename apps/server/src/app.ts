@@ -11,6 +11,7 @@ import { type Config, loginConfigured } from './config.js';
 import { randomToken, safeEqual, sha256, verifySignedRequest } from './crypto.js';
 import { type Database } from './db.js';
 import { MetaClient, MetaError } from './meta.js';
+import { getSystemStatus } from './runtime.js';
 import { auditView, campaignView, changeJob, createCampaign, deleteUserData, disconnectPage, HttpError, jobView, pageView, publishDraft, saveIdentity, syncPages } from './services.js';
 
 interface Auth { userId: string; workspaceId: string; name: string; workspaceName: string; facebookId: string; csrfToken: string; }
@@ -78,10 +79,17 @@ export async function buildApp({ config, db, meta = new MetaClient(config), serv
     reply.status(status).send({ error: message, message });
   });
   app.get('/health', async (_req, reply) => {
-    try { await db.query('SELECT 1'); return { ok: true, version: '0.1.0' }; }
-    catch { return reply.status(503).send({ ok: false }); }
+    const runtime = await getSystemStatus(db);
+    reply.header('Cache-Control', 'no-store');
+    // API/schema readiness and worker readiness are separate: the web service
+    // should remain reachable during worker startup, maintenance, or reconnects.
+    return reply.status(runtime.databaseReady ? 200 : 503).send({ ok: runtime.databaseReady, version: '0.1.0', runtime });
   });
-  app.get('/api/public-config', async () => ({ facebookLoginConfigured: loginConfigured(config) }));
+  app.get('/api/public-config', async () => ({
+    facebookLoginConfigured: loginConfigured(config),
+    oauthRedirectUri: `${config.PUBLIC_BASE_URL}/auth/facebook/callback`,
+    runtime: await getSystemStatus(db)
+  }));
   app.get('/auth/facebook', async (_req, reply) => {
     if (!loginConfigured(config)) throw new HttpError(503, 'Máy chủ chưa được cấu hình ứng dụng Meta. Quản trị viên cần điền META_APP_ID và META_APP_SECRET trong biến môi trường.');
     const state = randomToken(), browser = randomToken();
@@ -122,7 +130,8 @@ export async function buildApp({ config, db, meta = new MetaClient(config), serv
   app.get('/api/session', async req => ({ user: { id: req.auth!.userId, name: req.auth!.name },
     workspace: { id: req.auth!.workspaceId, name: req.auth!.workspaceName }, csrfToken: req.auth!.csrfToken }));
   app.get('/api/settings', async () => ({ workerConcurrency: config.WORKER_CONCURRENCY, pageIntervalSeconds: config.PAGE_INTERVAL_SECONDS,
-    maxPagesPerCampaign: LIMITS.pages, graphVersion: config.META_GRAPH_VERSION, facebookLoginConfigured: loginConfigured(config), publicBaseUrl: config.PUBLIC_BASE_URL }));
+    maxPagesPerCampaign: LIMITS.pages, graphVersion: config.META_GRAPH_VERSION, facebookLoginConfigured: loginConfigured(config),
+    publicBaseUrl: config.PUBLIC_BASE_URL, runtime: await getSystemStatus(db) }));
   app.get('/api/pages', async req => ({ pages: (await db.query('SELECT * FROM pages WHERE workspace_id=$1 ORDER BY name', [req.auth!.workspaceId])).rows.map(pageView) }));
   app.post('/api/pages/sync', async req => { await syncPages(db, req.auth!.userId, req.auth!.workspaceId, meta, config); return { ok: true }; });
   app.delete('/api/pages/:id', async req => { await disconnectPage(db, req.auth!.workspaceId, idParam(req)); return { ok: true }; });

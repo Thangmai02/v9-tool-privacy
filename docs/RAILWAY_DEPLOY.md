@@ -92,13 +92,23 @@ Trong **Deploy settings**, nếu có ô healthcheck, đặt `/health` và timeou
 https://<TEN_MIEN_RAILWAY_CUA_BAN>/health
 ```
 
-Kết quả mong đợi (khi DB sẵn sàng):
+Kết quả có `ok: true` khi database và migration đã sẵn sàng. Ngoài phiên bản ứng dụng, endpoint còn trả trạng thái runtime:
 
 ```json
-{"ok":true,"version":"0.1.0"}
+{
+  "ok": true,
+  "version": "0.1.0",
+  "runtime": {
+    "databaseReady": true,
+    "schemaVersion": 2,
+    "workerOnline": true,
+    "workerInstances": 1,
+    "workerLastSeenAt": "2026-11-22T00:00:00.000Z"
+  }
+}
 ```
 
-Sau đó mở URL Railway gốc. Giao diện này sẽ là **bản chạy thật**, không phải preview GitHub Pages.
+Timestamp trên chỉ là ví dụ. Worker có thể còn khởi động khi `/health` đã trả 200; chờ `runtime.workerOnline: true` trước khi thử lịch đăng. Mở URL Railway gốc để xem trạng thái máy chủ, cơ sở dữ liệu, worker và cấu hình Facebook Login ngay trên giao diện. Giao diện này sẽ là **bản chạy thật**, không phải preview GitHub Pages.
 
 Nếu app không chạy: kiểm tra `DATABASE_URL` đã resolve từ Railway reference, `TOKEN_ENCRYPTION_KEY` đúng 32 byte, `PUBLIC_BASE_URL` có HTTPS và `PORT=3000`. Railway có thể tự gán PORT, hãy dùng cùng một cổng với service Networking.
 
@@ -159,3 +169,4 @@ Tài liệu đối chiếu:
 - <https://docs.railway.com/networking/public-networking>
 - <https://docs.railway.com/pricing/cost-control>
 - <https://developers.facebook.com/>
+

@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import {
   campaignInputSchema, isPublicHttpsUrl, LIMITS, validateSchedule,
-  type Campaign, type CampaignInput, type Job, type JobStatus, type Page, type Session,
+  type Campaign, type CampaignInput, type Job, type JobStatus, type Page, type Session, type SystemStatus,
 } from '../../../packages/shared/src/index.js';
 import {
   ApiError, PREVIEW, createCampaign, deleteAccount, disconnectPage, getSession, getSnapshot,
@@ -18,6 +18,8 @@ import {
 type View = 'overview' | 'compose' | 'queue' | 'drafts' | 'pages' | 'settings';
 type Notice = { type: 'success' | 'error'; message: string };
 type Confirm = { title: string; description: ReactNode; label: string; danger?: boolean; action: () => Promise<void> };
+type PublicConfig = { facebookLoginConfigured: boolean; oauthRedirectUri: string; runtime: SystemStatus };
+const deploymentGuide = 'https://github.com/Thangmai02/v9-tool-privacy#trien-khai-ban-day-du';
 const timeZone = 'Asia/Ho_Chi_Minh';
 const formatDate = (value: string, options?: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('vi-VN', { timeZone, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', ...options }).format(new Date(value));
 const formatClock = (value: string) => formatDate(value, { day: undefined, month: undefined });
@@ -77,7 +79,9 @@ export default function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [loginRequired, setLoginRequired] = useState(false);
-  const [loginConfigured, setLoginConfigured] = useState<boolean | null>(PREVIEW ? false : null);
+  const [publicConfig, setPublicConfig] = useState<PublicConfig | null>(null);
+  const [serverAvailable, setServerAvailable] = useState<boolean | null>(null);
+  const [checkingServer, setCheckingServer] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -92,13 +96,23 @@ export default function App() {
   const navigate = (next: View) => { setView(next); window.location.hash = next; setMenuOpen(false); setNotice(null); };
   const newContent = () => { setTemplate(null); setComposerKey(k => k + 1); navigate('compose'); };
   const refresh = useCallback(async () => { setSnapshot(await getSnapshot()); }, []);
-  const init = useCallback(async () => {
-    setLoading(true); setNotice(null);
+  const loadPublicConfig = useCallback(async () => {
     try {
-      if (!PREVIEW) {
-        const config = await request<{facebookLoginConfigured: boolean}>('/api/public-config');
-        setLoginConfigured(config.facebookLoginConfigured);
-      }
+      const config = await request<PublicConfig>('/api/public-config');
+      setPublicConfig(config); setServerAvailable(true);
+    } catch (error) {
+      setPublicConfig(null); setServerAvailable(false); throw error;
+    }
+  }, []);
+  const checkServer = async () => {
+    setCheckingServer(true);
+    try { await loadPublicConfig(); } catch { /* The status panel displays an unavailable server. */ }
+    finally { setCheckingServer(false); }
+  };
+  const init = useCallback(async () => {
+    setLoading(true); setNotice(null); setLoginRequired(false);
+    try {
+      if (!PREVIEW) await loadPublicConfig();
       setSession(await getSession()); setLoginRequired(false); await refresh();
     }
     catch (error) {
@@ -115,8 +129,13 @@ export default function App() {
       }
       else setNotice({ type: 'error', message: error instanceof Error ? error.message : 'Không thể kết nối máy chủ.' });
     } finally { setLoading(false); }
-  }, [refresh]);
+  }, [refresh, loadPublicConfig]);
   useEffect(() => { void init(); }, [init]);
+  useEffect(() => {
+    if (PREVIEW) return;
+    const timer = window.setInterval(() => { void loadPublicConfig().catch(() => {}); }, 20_000);
+    return () => window.clearInterval(timer);
+  }, [loadPublicConfig]);
   useEffect(() => {
     const handler = () => { const hash = window.location.hash.slice(1); if (nav.some(n => n.id === hash)) setView(hash as View); };
     window.addEventListener('hashchange', handler); return () => window.removeEventListener('hashchange', handler);
@@ -181,6 +200,7 @@ export default function App() {
   const drafts = campaigns.filter(c => c.status === 'draft');
   const upcoming = [...pending].sort((a, b) => +new Date(a.scheduledAt) - +new Date(b.scheduledAt)).slice(0, 4);
   const filteredJobs = jobs.filter(j => (jobFilter === 'all' || j.status === jobFilter) && (jobType === 'all' || j.type === jobType) && `${j.pageName} ${campaigns.find(c => c.id === j.campaignId)?.title || ''}`.toLowerCase().includes(query.toLowerCase()));
+  const runtime = publicConfig?.runtime ?? snapshot?.settings.runtime;
 
   return <div className={`app ${menuOpen ? 'mobile-menu-open' : ''}`}>
     <a className="skip-link" href="#main-content">Bỏ qua đến nội dung</a>
@@ -197,7 +217,13 @@ export default function App() {
       {PREVIEW && <div className="preview-banner"><span><span className="preview-dot" />Bản trải nghiệm <span className="banner-divider">·</span> Dữ liệu minh họa <span className="banner-divider">·</span> Không đăng lên Facebook</span><button onClick={() => navigate('settings')}>Kết nối bản máy chủ<ExternalLink /></button></div>}
       <main id="main-content" tabIndex={-1}>
         {notice && <div className={`notice ${notice.type}`} role={notice.type === 'error' ? 'alert' : 'status'}>{notice.type === 'error' ? <AlertCircle /> : <CircleCheck />}<span>{notice.message}</span><button className="icon-button" aria-label="Đóng thông báo" onClick={() => setNotice(null)}><X /></button></div>}
-        {loading ? <div className="loading-state"><LoaderCircle className="spin" /><h2>Đang mở không gian của bạn…</h2><p>Đang tải Page, nội dung và lịch đăng.</p></div> : loginRequired ? <Login onConnect={connect} configured={loginConfigured} /> : !snapshot ? <Empty icon={<AlertCircle />} title="Chưa kết nối được máy chủ" text="Kiểm tra máy chủ API đã khởi động, sau đó tải lại. Dữ liệu thật không được thay thế bằng dữ liệu minh họa." action={<button className="button primary" onClick={() => void init()}><RefreshCw />Thử kết nối lại</button>} /> : <>
+        {loading ? <div className="loading-state"><LoaderCircle className="spin" /><h2>Đang mở không gian của bạn…</h2><p>Đang tải Page, nội dung và lịch đăng.</p></div> : loginRequired ? <Login onConnect={connect} config={publicConfig} available={serverAvailable} checking={checkingServer} onCheck={() => void checkServer()} /> : !snapshot ? <>
+          <Empty icon={<AlertCircle />} title="Chưa kết nối được máy chủ" text="Kiểm tra máy chủ API đã khởi động, sau đó tải lại. Dữ liệu thật không được thay thế bằng dữ liệu minh họa." action={<button className="button primary" onClick={() => void init()}><RefreshCw />Thử kết nối lại</button>} />
+          {!PREVIEW && <RuntimePanel configured={publicConfig?.facebookLoginConfigured ?? null} runtime={publicConfig?.runtime} callbackUrl={publicConfig?.oauthRedirectUri} available={serverAvailable} checking={checkingServer} onCheck={() => void checkServer()} />}
+        </> : <>
+          {!PREVIEW && (view === 'compose' || view === 'queue') && (serverAvailable === false || runtime?.databaseReady === false || runtime?.workerOnline === false) && <div className="runtime-warning" role="status">
+            <AlertCircle /><div><strong>{serverAvailable === false ? 'Chưa kiểm tra được kết nối máy chủ' : runtime?.databaseReady === false ? 'Cơ sở dữ liệu chưa sẵn sàng' : 'Tiến trình đăng bài chưa hoạt động'}</strong><p>{serverAvailable === false ? 'Trạng thái đang hiển thị có thể chưa được cập nhật. Kiểm tra kết nối trước khi gửi nội dung.' : runtime?.databaseReady === false ? 'Máy chủ chưa xác nhận được khả năng lưu nội dung. Kiểm tra cài đặt và làm mới hàng đợi trước khi gửi lại một tác vụ.' : 'Bạn vẫn có thể lưu nháp và xếp lịch. Tác vụ đã lưu sẽ chờ đến khi tiến trình đăng bài hoạt động trở lại.'}</p></div><button className="text-button" onClick={() => navigate('settings')}>Kiểm tra cài đặt<ExternalLink /></button>
+          </div>}
           {view === 'overview' && <>
             <div className="page-heading"><div><p className="eyebrow">TRUNG TÂM XUẤT BẢN</p><h1>Một nơi. Mọi Fanpage.</h1><p>Quản lý nội dung, lịch đăng và những cuộc trò chuyện tiếp theo.</p></div><button className="button primary" onClick={newContent}><Plus />Tạo bài mới</button></div>
             <div className="stats-grid"><Stat label="Page đã kết nối" value={connected.length} icon={<Layers3 />} note={`${pages.length} Page trong không gian`} onClick={() => navigate('pages')} /><Stat label="Tác vụ đang chờ" value={pending.length} icon={<CalendarDays />} note="Bài đăng & bình luận" onClick={() => { setJobFilter('all'); navigate('queue'); }} /><Stat label={PREVIEW ? 'Bài hoàn tất · mẫu' : 'Bài đã xuất bản'} value={succeeded.length} icon={<CheckCheck />} note={PREVIEW ? 'Kết quả được mô phỏng' : 'Kết quả do worker ghi nhận'} onClick={() => { setJobFilter('succeeded'); navigate('queue'); }} /><Stat label="Cần chú ý" value={attention.length} icon={<AlertCircle />} note={attention.length ? 'Kiểm tra lỗi hoặc đối soát' : 'Không có tác vụ cần xử lý'} onClick={() => { setJobFilter('all'); navigate('queue'); }} /></div>
@@ -216,7 +242,7 @@ export default function App() {
           </>}
           {view === 'drafts' && <><div className="page-heading"><div><p className="eyebrow">Ý TƯỞNG ĐANG THÀNH HÌNH</p><h1>Bản nháp</h1><p>Lên lịch bản nháp đã sẵn sàng, hoặc tạo bản sao để chỉnh sửa; bản gốc vẫn được giữ.</p></div><button className="button primary" onClick={newContent}><Plus />Tạo bản nháp</button></div>{drafts.length ? <div className="draft-grid">{drafts.map(campaign => <article className="card draft-card" key={campaign.id}><div className="draft-card-head"><span className="label-chip"><FileText />Bản nháp</span><span>{formatDate(campaign.createdAt, { hour: undefined, minute: undefined })}</span></div><h2>{campaign.title}</h2><p>{campaign.text || (campaign.media?.kind === 'image' ? 'Bài đăng hình ảnh' : 'Bài đăng video')}</p><div className="draft-meta"><span><Layers3 />{campaign.pageIds.length} Page</span>{campaign.firstComment && <span><MessageSquare />Có bình luận</span>}{campaign.media && <span>{campaign.media.kind === 'image' ? <ImageIcon /> : <Video />}{campaign.media.kind === 'image' ? 'Ảnh' : 'Video'}</span>}</div><div className="draft-actions"><button className="button secondary" onClick={() => { setTemplate(campaign); setComposerKey(k => k + 1); navigate('compose'); }}><PenLine />Tạo bản sao</button><button className="button primary" disabled={busy} onClick={() => askDraftPublish(campaign)}><CalendarDays />Lên lịch</button></div></article>)}</div> : <section className="card"><Empty icon={<FileText />} title="Để dành một ý tưởng hay" text="Bản nháp sẽ xuất hiện ở đây khi bạn chọn Lưu nháp trong màn hình soạn nội dung." action={<button className="button primary" onClick={newContent}><Plus />Soạn nội dung</button>} /></section>}</>}
           {view === 'pages' && <><div className="page-heading"><div><p className="eyebrow">TẤT CẢ PAGE TRONG TẦM TAY</p><h1>Fanpage</h1><p>Kết nối các Page bạn được phép quản lý bằng tài khoản Facebook.</p></div><div className="heading-actions"><button className="button secondary" disabled={busy} onClick={() => void act(syncPages, PREVIEW ? 'Đã làm mới Page minh họa.' : 'Đã đồng bộ Page và quyền hiện tại.')}><RefreshCw />Đồng bộ</button><button className="button primary" onClick={connect}><Plus />Kết nối Fanpage</button></div></div><div className="page-list-grid">{pages.map((page, i) => <article className="card page-card" key={page.id}><div className="page-card-head"><PageAvatar page={page} index={i} /><span className={`status ${page.status === 'connected' ? 'status-succeeded' : 'status-failed'}`}><span />{page.status === 'connected' ? 'Đã kết nối' : page.status === 'expired' ? 'Cần kết nối lại' : 'Đã ngắt'}</span></div><h2>{page.name}</h2><p>{page.category || 'Facebook Page'}</p><div className="page-permissions"><span className={page.canPost ? 'granted' : ''}>{page.canPost ? <CircleCheck /> : <AlertCircle />}Đăng bài, ảnh & video</span><span className={page.canComment ? 'granted' : ''}>{page.canComment ? <CircleCheck /> : <AlertCircle />}Thêm bình luận</span></div><dl><div><dt>Page ID</dt><dd>{PREVIEW ? 'Page minh họa' : page.facebookId}</dd></div><div><dt>Đồng bộ gần nhất</dt><dd>{formatDate(page.lastSyncedAt)}</dd></div></dl><div className="page-card-actions">{page.status === 'connected' ? <button className="text-button danger-text" disabled={busy} onClick={() => setConfirm({ title: `Ngắt kết nối ${page.name}?`, description: <p>Các tác vụ đang chờ của Page này sẽ dừng. Bạn có thể kết nối lại bằng Facebook sau.</p>, label: 'Ngắt kết nối', danger: true, action: async () => { await disconnectPage(page); setNotice({ type: 'success', message: 'Đã ngắt kết nối Page.' }); } })}><Link2 />Ngắt kết nối</button> : <button className="text-button" onClick={connect}><RefreshCw />Kết nối lại</button>}{page.facebookId && <a className="text-button" href={`https://www.facebook.com/${encodeURIComponent(page.facebookId)}`} target="_blank" rel="noreferrer">Mở Page<ExternalLink /></a>}</div></article>)}<button className="add-page-card" onClick={connect}><span><Plus /></span><strong>Thêm một Fanpage</strong><p>Chọn từ các Page bạn có quyền quản lý.</p></button></div><div className="inline-info"><ShieldCheck /><p>V9 dùng trang đăng nhập chính thức của Facebook. Mật khẩu Facebook không được nhập hoặc lưu trong tool. Kết nối có thể cần cấp lại khi quyền hoặc token thay đổi.</p></div></>}
-          {view === 'settings' && <Settings snapshot={snapshot} busy={busy} act={act} setConfirm={setConfirm} onConnect={connect} />}
+          {view === 'settings' && <Settings snapshot={snapshot} busy={busy} act={act} setConfirm={setConfirm} onConnect={connect} config={publicConfig} available={serverAvailable} checking={checkingServer} onCheck={() => void checkServer()} />}
         </>}
         <footer className="app-footer"><span>V9 Page Studio <span>·</span> Không gian xuất bản của bạn</span><div><a href={policyPath('privacy-policy.html')} target="_blank" rel="noreferrer">Quyền riêng tư</a><a href={policyPath('terms.html')} target="_blank" rel="noreferrer">Điều khoản</a><a href={policyPath('data-deletion.html')} target="_blank" rel="noreferrer">Xóa dữ liệu</a></div></footer>
       </main>
@@ -229,8 +255,39 @@ function Stat({ label, value, note, icon, onClick }: { label: string; value: num
   return <button className="stat-card" onClick={onClick}><div className="stat-top"><span>{label}</span><span className="stat-icon">{icon}</span></div><strong>{value.toString().padStart(2, '0')}</strong><span className="stat-note">{note}</span></button>;
 }
 
-function Login({ onConnect, configured }: { onConnect: () => void; configured: boolean | null }) {
-  return <section className="login-card"><span className="login-logo">V9</span><span className="eyebrow">CHÀO MỪNG ĐẾN PAGE STUDIO</span><h1>Không gian dành cho<br />những Page của bạn.</h1><p>Đăng nhập bằng Facebook, chọn Page bạn quản lý và bắt đầu chuẩn bị nội dung.</p><button className="button facebook-button" onClick={onConnect} disabled={configured === false}><Facebook />Tiếp tục với Facebook</button>{configured === false && <div className="login-setup"><strong>Máy chủ chưa cấu hình đăng nhập Facebook</strong><p>Người vận hành cần thiết lập ứng dụng Meta và URL callback bằng biến môi trường trên máy chủ.</p><a className="text-button" href="https://github.com/Thangmai02/v9-tool-privacy#readme" target="_blank" rel="noreferrer">Mở hướng dẫn triển khai<ExternalLink /></a></div>}<div className="login-benefits"><span><Layers3 />Nhiều Fanpage</span><span><CalendarDays />Lịch đăng tập trung</span><span><MessageSquare />Bình luận sau đăng</span></div><p className="login-footnote"><ShieldCheck />Bạn cấp quyền trên Facebook. Tool không yêu cầu mật khẩu hoặc cookie tài khoản.</p></section>;
+function RuntimePanel({ configured, runtime, callbackUrl, available, checking, onCheck }: {
+  configured: boolean | null; runtime?: SystemStatus; callbackUrl?: string;
+  available: boolean | null; checking: boolean; onCheck: () => void;
+}) {
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'manual'>('idle');
+  useEffect(() => { setCopyState('idle'); }, [callbackUrl]);
+  const copyCallback = async () => {
+    if (!callbackUrl) return;
+    try { await navigator.clipboard.writeText(callbackUrl); setCopyState('copied'); }
+    catch { setCopyState('manual'); }
+  };
+  const checks = [
+    { label: 'Máy chủ xử lý', ready: available, detail: available === true ? 'Đã kết nối' : available === false ? 'Chưa nhận được trạng thái' : 'Chưa kiểm tra' },
+    { label: 'Cơ sở dữ liệu', ready: available === true ? runtime?.databaseReady : null, detail: available !== true || !runtime ? 'Chưa kiểm tra' : runtime.databaseReady ? 'Sẵn sàng lưu dữ liệu' : 'Chưa sẵn sàng' },
+    { label: 'Tiến trình đăng bài', ready: available === true ? runtime?.workerOnline : null, detail: available !== true || !runtime ? 'Chưa kiểm tra' : runtime.workerOnline ? `Đang hoạt động · ${runtime.workerInstances} tiến trình` : 'Chưa hoạt động' },
+    { label: 'Đăng nhập Facebook', ready: available === true ? configured : null, detail: available !== true || configured === null ? 'Chưa kiểm tra' : configured ? 'Đã khai báo ứng dụng' : 'Cần cấu hình ứng dụng Meta' },
+  ];
+  return <section className="card settings-card runtime-card" aria-label="Trạng thái bản dùng thật">
+    <div className="runtime-heading"><div className="settings-title"><span className="feature-icon"><Activity /></span><div><h2>Trạng thái bản dùng thật</h2><p>Kiểm tra kết nối trước khi bắt đầu xuất bản.</p></div></div><button className="icon-button bordered" type="button" aria-label="Kiểm tra lại trạng thái máy chủ" title="Kiểm tra lại trạng thái" disabled={checking} onClick={onCheck}><RefreshCw className={checking ? 'spin' : ''} /></button></div>
+    <dl className="runtime-checks">{checks.map(check => <div key={check.label}><dt>{check.label}</dt><dd className={check.ready === true ? 'runtime-ready' : check.ready === false ? 'runtime-pending' : 'runtime-unknown'}>{check.ready === true ? <CircleCheck /> : check.ready === false ? <AlertCircle /> : <Clock3 />}{check.detail}</dd></div>)}</dl>
+    {available === true && runtime && !runtime.workerOnline && <p className="runtime-explanation">Lịch đã lưu sẽ tiếp tục chờ. Người vận hành cần khởi động tiến trình đăng bài để xử lý hàng đợi.{runtime.workerLastSeenAt ? ` Hoạt động gần nhất: ${formatDate(runtime.workerLastSeenAt)} (giờ Việt Nam).` : ''}</p>}
+    {available === true && configured === false && <p className="runtime-explanation">Người vận hành cần thêm thông tin ứng dụng Meta trong cài đặt máy chủ để bật nút đăng nhập Facebook.</p>}
+    {callbackUrl && <div className="oauth-callback"><label className="field-label" htmlFor="oauth-callback-url">URL chuyển về sau đăng nhập (OAuth)</label><div className="callback-input"><input id="oauth-callback-url" className="text-input" readOnly value={callbackUrl} onFocus={event => event.currentTarget.select()} /><button className="button secondary" type="button" onClick={() => void copyCallback()}>{copyState === 'copied' ? <Check /> : <Link2 />}{copyState === 'copied' ? 'Đã sao chép' : 'Sao chép'}</button></div><p className="field-hint">Dán nguyên địa chỉ này vào mục Valid OAuth Redirect URIs của ứng dụng Meta.</p><span className="copy-feedback" role="status">{copyState === 'manual' ? 'Trình duyệt chưa cho phép sao chép. Chọn ô địa chỉ rồi sao chép thủ công.' : copyState === 'copied' ? 'Đã sao chép URL chuyển về sau đăng nhập.' : ''}</span></div>}
+    <a className="text-button runtime-guide-link" href={deploymentGuide} target="_blank" rel="noreferrer">Hướng dẫn triển khai bản đầy đủ<ExternalLink /></a>
+  </section>;
+}
+
+function Login({ onConnect, config, available, checking, onCheck }: {
+  onConnect: () => void; config: PublicConfig | null; available: boolean | null; checking: boolean; onCheck: () => void;
+}) {
+  return <section className="login-card"><span className="login-logo">V9</span><span className="eyebrow">CHÀO MỪNG ĐẾN PAGE STUDIO</span><h1>Không gian dành cho<br />những Page của bạn.</h1><p>Đăng nhập bằng Facebook, chọn Page bạn quản lý và bắt đầu chuẩn bị nội dung.</p><button className="button facebook-button" onClick={onConnect} disabled={!config?.facebookLoginConfigured || config.runtime?.databaseReady === false}><Facebook />Tiếp tục với Facebook</button>
+    <RuntimePanel configured={config?.facebookLoginConfigured ?? null} runtime={config?.runtime} callbackUrl={config?.oauthRedirectUri} available={available} checking={checking} onCheck={onCheck} />
+    <div className="login-benefits"><span><Layers3 />Nhiều Fanpage</span><span><CalendarDays />Lịch đăng tập trung</span><span><MessageSquare />Bình luận sau đăng</span></div><p className="login-footnote"><ShieldCheck />Bạn cấp quyền trên Facebook. Tool không yêu cầu mật khẩu hoặc cookie tài khoản.</p></section>;
 }
 
 function Composer({ pages, template, busy, onPublish, onDraft, onConnect }: {
@@ -280,9 +337,14 @@ function Composer({ pages, template, busy, onPublish, onDraft, onConnect }: {
   </>;
 }
 
-function Settings({ snapshot, busy, act, setConfirm, onConnect }: { snapshot: Snapshot; busy: boolean; act: (fn: () => Promise<void>, message: string) => Promise<void>; setConfirm: (value: Confirm) => void; onConnect: () => void }) {
+function Settings({ snapshot, busy, act, setConfirm, onConnect, config, available, checking, onCheck }: {
+  snapshot: Snapshot; busy: boolean; act: (fn: () => Promise<void>, message: string) => Promise<void>;
+  setConfirm: (value: Confirm) => void; onConnect: () => void; config: PublicConfig | null;
+  available: boolean | null; checking: boolean; onCheck: () => void;
+}) {
   const [backendUrl, setBackendUrl] = useState(() => { try { return localStorage.getItem('v9.backend.url') || ''; } catch { return ''; } });
   const [urlError, setUrlError] = useState('');
+  const facebookConfigured = !PREVIEW && available === true && (config?.facebookLoginConfigured ?? snapshot.settings.facebookLoginConfigured);
   const openBackend = () => {
     setUrlError('');
     try {
@@ -292,8 +354,10 @@ function Settings({ snapshot, busy, act, setConfirm, onConnect }: { snapshot: Sn
       window.location.assign(url.href);
     } catch (err) { setUrlError(err instanceof Error ? err.message : 'URL không hợp lệ.'); }
   };
-  return <><div className="page-heading"><div><p className="eyebrow">THIẾT LẬP KHÔNG GIAN</p><h1>Cài đặt</h1><p>Kết nối Facebook, kiểm tra cấu hình và quản lý dữ liệu của bạn.</p></div></div><div className="settings-grid"><div><section className="card settings-card"><div className="settings-title"><span className="feature-icon"><Facebook /></span><div><h2>Kết nối Facebook</h2><p>Đăng nhập qua Meta, cấp quyền cho các Page bạn quản lý.</p></div></div><div className={`settings-state ${snapshot.settings.facebookLoginConfigured ? 'ready' : ''}`}><span className="connection-dot" /><strong>{snapshot.settings.facebookLoginConfigured ? 'Đã cấu hình Facebook Login' : PREVIEW ? 'Bản trải nghiệm chưa có máy chủ kết nối' : 'Cần cấu hình Facebook Login trên máy chủ'}</strong></div><p>Khách hàng chỉ cần đăng nhập và chọn Page sau khi ứng dụng được Meta cấp các quyền cần thiết. App Review, Advanced Access và xác minh theo yêu cầu của Meta là các bước riêng.</p><button className="button secondary" onClick={onConnect}><Facebook />{PREVIEW ? 'Thông tin kết nối máy chủ' : 'Kết nối / cấp lại quyền'}</button></section>
-      {PREVIEW && <section className="card settings-card"><div className="settings-title"><span className="feature-icon"><Globe2 /></span><div><h2>Mở bản máy chủ</h2><p>GitHub Pages hiển thị giao diện trải nghiệm. Tác vụ thật chạy trên máy chủ V9 của bạn.</p></div></div><label className="field-label" htmlFor="backend-url">Địa chỉ tool đã triển khai</label><div className="backend-input"><input id="backend-url" className="text-input" type="url" placeholder="https://studio.tenmiencuaban.vn" value={backendUrl} onChange={e => setBackendUrl(e.target.value)} /><button className="button primary" onClick={openBackend}><ExternalLink />Mở tool</button></div><p className="field-hint">Chỉ nhập URL máy chủ do bạn tin cậy. Không nhập App Secret, access token hoặc mật khẩu tại đây.</p>{urlError && <p className="field-error" role="alert">{urlError}</p>}<a className="text-button" href="https://github.com/Thangmai02/v9-tool-privacy#readme" target="_blank" rel="noreferrer">Hướng dẫn triển khai máy chủ<ExternalLink /></a></section>}
+  return <><div className="page-heading"><div><p className="eyebrow">THIẾT LẬP KHÔNG GIAN</p><h1>Cài đặt</h1><p>Kết nối Facebook, kiểm tra cấu hình và quản lý dữ liệu của bạn.</p></div></div><div className="settings-grid"><div>
+      {!PREVIEW && <RuntimePanel configured={config?.facebookLoginConfigured ?? snapshot.settings.facebookLoginConfigured} runtime={config?.runtime ?? snapshot.settings.runtime} callbackUrl={config?.oauthRedirectUri} available={available} checking={checking} onCheck={onCheck} />}
+      <section className="card settings-card"><div className="settings-title"><span className="feature-icon"><Facebook /></span><div><h2>Kết nối Facebook</h2><p>Đăng nhập qua Meta, cấp quyền cho các Page bạn quản lý.</p></div></div><div className={`settings-state ${facebookConfigured ? 'ready' : ''}`}><span className="connection-dot" /><strong>{facebookConfigured ? 'Đã cấu hình Facebook Login' : PREVIEW ? 'Bản trải nghiệm chưa có máy chủ kết nối' : available !== true ? 'Chưa kiểm tra được kết nối máy chủ' : 'Cần cấu hình Facebook Login trên máy chủ'}</strong></div><p>Khách hàng chỉ cần đăng nhập và chọn Page sau khi ứng dụng được Meta cấp các quyền cần thiết. App Review, Advanced Access và xác minh theo yêu cầu của Meta là các bước riêng.</p><button className="button secondary" disabled={!PREVIEW && !facebookConfigured} onClick={onConnect}><Facebook />{PREVIEW ? 'Thông tin kết nối máy chủ' : 'Kết nối / cấp lại quyền'}</button></section>
+      {PREVIEW && <section className="card settings-card"><div className="settings-title"><span className="feature-icon"><Globe2 /></span><div><h2>Dùng bản đầy đủ</h2><p>Giao diện, máy chủ lưu dữ liệu và tiến trình đăng bài chạy cùng một địa chỉ tool.</p></div></div><div className="preview-runtime-note"><AlertCircle /><p>Bạn đang ở bản trải nghiệm trên GitHub Pages. Bản này dùng dữ liệu minh họa trong trình duyệt và chưa kết nối máy chủ đăng bài.</p></div><label className="field-label" htmlFor="backend-url">Địa chỉ tool đã triển khai</label><div className="backend-input"><input id="backend-url" className="text-input" type="url" placeholder="https://studio.tenmiencuaban.vn" value={backendUrl} onChange={e => setBackendUrl(e.target.value)} /><button className="button primary" onClick={openBackend}><ExternalLink />Mở tool</button></div><p className="field-hint">Chỉ nhập URL máy chủ do bạn tin cậy. Không nhập App Secret, access token hoặc mật khẩu tại đây.</p>{urlError && <p className="field-error" role="alert">{urlError}</p>}<a className="text-button" href={deploymentGuide} target="_blank" rel="noreferrer">Hướng dẫn triển khai bản đầy đủ<ExternalLink /></a></section>}
       <section className="card settings-card"><div className="settings-title"><span className="feature-icon"><Activity /></span><div><h2>Cấu hình xử lý</h2><p>Thông số chỉ đọc; người vận hành thay đổi ở môi trường máy chủ.</p></div></div><dl className="settings-list"><div><dt>Số luồng worker</dt><dd>{snapshot.settings.workerConcurrency}</dd></div><div><dt>Khoảng cách tối thiểu trên một Page</dt><dd>{snapshot.settings.pageIntervalSeconds} giây</dd></div><div><dt>Số Page tối đa mỗi nội dung</dt><dd>{snapshot.settings.maxPagesPerCampaign}</dd></div><div><dt>Meta Graph API</dt><dd>{snapshot.settings.graphVersion}</dd></div><div><dt>Múi giờ giao diện</dt><dd>Asia/Ho_Chi_Minh · UTC+7</dd></div><div><dt>Lưu thời điểm trên máy chủ</dt><dd>UTC</dd></div></dl><p className="field-hint">Giới hạn thực tế còn phụ thuộc Meta và quyền của từng Page. Worker giảm tốc hoặc dừng khi gặp giới hạn và lỗi quyền.</p></section>
       <section className="card settings-card"><div className="settings-title"><span className="feature-icon"><ShieldCheck /></span><div><h2>Dữ liệu & quyền truy cập</h2><p>Kiểm soát dữ liệu trong không gian của bạn.</p></div></div>{PREVIEW ? <><p>Dữ liệu minh họa và bản nháp trải nghiệm được lưu trong trình duyệt này. Khôi phục sẽ xóa thay đổi của bạn trong bản trải nghiệm.</p><button className="button secondary" disabled={busy} onClick={() => setConfirm({ title: 'Khôi phục dữ liệu minh họa?', description: <p>Các bản nháp và lịch minh họa bạn đã tạo sẽ được thay bằng bộ dữ liệu mẫu ban đầu. Không ảnh hưởng Facebook.</p>, label: 'Khôi phục', danger: true, action: async () => { await resetDemo(); } })}><RotateCcw />Khôi phục bản trải nghiệm</button></> : <><p>Xóa tài khoản sẽ thu hồi phiên đăng nhập, dừng tác vụ và xóa dữ liệu V9 liên quan. Những bài đã đăng trên Facebook cần được quản lý trực tiếp trên Facebook.</p><button className="button danger-outline" disabled={busy} onClick={() => setConfirm({ title: 'Xóa tài khoản và dữ liệu V9?', description: <p>Thao tác xóa dữ liệu V9 không thể hoàn tác. Các tác vụ đang chờ sẽ dừng; bài đã xuất bản trên Facebook không bị xóa.</p>, label: 'Xóa dữ liệu của tôi', danger: true, action: async () => { await deleteAccount(); window.location.reload(); } })}><Trash2 />Xóa tài khoản & dữ liệu</button></>}</section></div><aside><section className="card settings-guide"><h2>Từ kết nối đến xuất bản</h2><div><span><Globe2 /></span><h3>Máy chủ HTTPS</h3><p>API, cơ sở dữ liệu và worker chạy cùng cấu hình triển khai của bạn.</p></div><div><span><Facebook /></span><h3>Ứng dụng Meta</h3><p>Cấu hình App ID, App Secret và URL callback bằng biến môi trường máy chủ.</p></div><div><span><Users /></span><h3>Quyền cho khách hàng</h3><p>Hoàn thành App Review và các bước xác minh Meta yêu cầu trước khi mở cho người ngoài app.</p></div><div><span><CircleCheck /></span><h3>Kiểm thử trên Page của bạn</h3><p>Kiểm tra bài chữ, ảnh, video, bình luận và kết nối lại trước khi đưa vào vận hành.</p></div><a className="button secondary full-width" href="https://github.com/Thangmai02/v9-tool-privacy" target="_blank" rel="noreferrer"><FileText />Mở mã nguồn & hướng dẫn</a></section></aside></div></>;
 }

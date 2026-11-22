@@ -28,9 +28,14 @@ export interface Session {
   csrfToken: string;
 }
 export interface AuditEvent { id: string; action: string; detail: string; createdAt: string; }
+export interface SystemStatus {
+  databaseReady: boolean; schemaVersion: number | null;
+  workerOnline: boolean; workerInstances: number; workerLastSeenAt: string | null;
+}
 export interface Settings {
   workerConcurrency: number; pageIntervalSeconds: number; maxPagesPerCampaign: number;
   graphVersion: string; facebookLoginConfigured: boolean; publicBaseUrl: string;
+  runtime?: SystemStatus;
 }
 
 // Product limits, intentionally tighter than Meta's changing network limits.

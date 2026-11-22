@@ -59,4 +59,12 @@ CREATE TABLE IF NOT EXISTS deletion_receipts (
   code uuid PRIMARY KEY, status text NOT NULL CHECK(status IN ('completed')), created_at timestamptz NOT NULL DEFAULT now()
 );
 INSERT INTO schema_migrations(version) VALUES(1) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS worker_heartbeats (
+  worker_id uuid PRIMARY KEY,
+  concurrency integer NOT NULL CHECK(concurrency BETWEEN 1 AND 16),
+  started_at timestamptz NOT NULL DEFAULT now(),
+  last_seen timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS worker_heartbeats_last_seen ON worker_heartbeats(last_seen);
+INSERT INTO schema_migrations(version) VALUES(2) ON CONFLICT DO NOTHING;
 `;

@@ -37,3 +37,15 @@ jobs:
           TEST_DATABASE_URL: postgresql://v9test:test-only-not-a-production-secret@localhost:5432/v9test
       - run: npm run build:preview
       - run: npm audit --omit=dev --audit-level=high
+  container-smoke:
+    name: Production frontend + API + worker
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Build and run all production containers
+        run: node scripts/smoke-container.mjs

@@ -5,6 +5,7 @@ x-app: &app
   environment:
     DATABASE_URL: postgresql://${POSTGRES_USER:-v9}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-v9}
     NODE_ENV: production
+    PORT: "3000"
   restart: unless-stopped
   init: true
   security_opt:
@@ -61,7 +62,7 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-    stop_grace_period: 60s
+    stop_grace_period: 90s
 
   https:
     image: caddy:2-alpine

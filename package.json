@@ -15,6 +15,7 @@
     "build:server": "tsc -p tsconfig.server.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --import tsx --test tests/*.test.ts",
+    "test:container": "node scripts/smoke-container.mjs",
     "start": "node dist/apps/server/src/index.js",
     "worker": "node dist/apps/server/src/worker.js",
     "db:migrate": "node --import tsx apps/server/src/migrate.ts",

@@ -16,44 +16,60 @@ const db = makeDatabase(config.DATABASE_URL, Math.max(12, config.WORKER_CONCURRE
 const controller = new AbortController();
 let app: Awaited<ReturnType<typeof buildApp>> | undefined;
 let workerTask: Promise<void> | undefined;
+let startupTask: Promise<void>;
+let shutdownTask: Promise<void> | undefined;
 let stopping = false;
 
-async function shutdown(): Promise<void> {
-  if (stopping) return;
+function shutdown(): Promise<void> {
+  if (shutdownTask) return shutdownTask;
   stopping = true;
   controller.abort();
-  try {
-    if (app) await app.close();
-  } catch {
-    process.exitCode = 1;
-    console.error('V9 HTTP server could not shut down cleanly.');
-  }
-  try {
-    if (workerTask) await workerTask;
-  } catch {
-    process.exitCode = 1;
-    console.error('V9 background worker failed during shutdown.');
-  }
-  try {
-    await db.end?.();
-  } catch {
-    process.exitCode = 1;
-    console.error('V9 database pool could not shut down cleanly.');
-  }
+  shutdownTask = (async () => {
+    // Startup may still be migrating or constructing the HTTP server. Let that
+    // step settle before closing its resources; otherwise it could open a new
+    // listener after cleanup has already closed the database pool.
+    try { await startupTask; } catch { /* Startup reports its own safe error. */ }
+    try {
+      if (app) await app.close();
+    } catch {
+      process.exitCode = 1;
+      console.error('V9 HTTP server could not shut down cleanly.');
+    }
+    try {
+      if (workerTask) await workerTask;
+    } catch {
+      process.exitCode = 1;
+      console.error('V9 background worker failed during shutdown.');
+    }
+    try {
+      await db.end?.();
+    } catch {
+      process.exitCode = 1;
+      console.error('V9 database pool could not shut down cleanly.');
+    }
+  })();
+  return shutdownTask;
 }
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.once(signal, () => { void shutdown(); });
 }
 
-try {
+async function startup(): Promise<void> {
+  if (stopping) return;
   // Startup migration is serialized by a PostgreSQL advisory lock. This lets
   // new Railway users deploy from GitHub without a separate migration service.
   await migrate(db);
+  if (stopping) return;
   app = await buildApp({ config, db });
+  if (stopping) return;
   await app.listen({ port: config.PORT, host: '0.0.0.0' });
+  if (stopping) return;
   console.log('V9 Page Studio listening on port ' + config.PORT + '.');
-  workerTask = startWorker(db, config, controller.signal).then(
+  workerTask = startWorker(db, config, controller.signal);
+  // Observe rejection immediately while retaining the original promise so
+  // shutdown can await the worker's in-flight work and heartbeat cleanup.
+  void workerTask.then(
     () => {
       if (!stopping) {
         process.exitCode = 1;
@@ -70,8 +86,16 @@ try {
     }
   );
   console.log('V9 queue worker started (' + config.WORKER_CONCURRENCY + ' slots).');
+}
+
+// Deferring startup by one microtask assigns startupTask before any startup
+// work can trigger shutdown. Cleanup always waits on this same promise.
+startupTask = Promise.resolve().then(startup);
+try {
+  await startupTask;
 } catch {
   process.exitCode = 1;
   console.error('V9 Page Studio startup failed. Check required environment variables and the PostgreSQL connection.');
   await shutdown();
 }
+

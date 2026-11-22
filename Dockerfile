@@ -12,6 +12,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=build --chown=node:node /app/privacy-policy.html /app/terms.html /app/data-deletion.html /app/style.css /app/logo.svg ./public/
+COPY --from=build --chown=node:node /app/scripts/start-service.sh ./scripts/start-service.sh
 USER node
 EXPOSE 3000
-CMD ["node", "dist/apps/server/src/index.js"]
+CMD ["sh", "scripts/start-service.sh", "api"]
