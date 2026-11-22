@@ -17,6 +17,15 @@ test('Business Login config omits scope and uses pinned API version and exact ca
   assert.equal(url.searchParams.get('redirect_uri'), 'http://localhost:3000/auth/facebook/callback');
   assert.equal(url.pathname, '/v27.0/dialog/oauth');
 });
+test('standard OAuth uses minimum permissions for public Page publishing', () => {
+  const url = new URL(new MetaClient(config).authorizationUrl('test-state'));
+  assert.deepEqual(url.searchParams.get('scope')?.split(','), ['public_profile', 'pages_show_list', 'pages_read_engagement', 'pages_manage_posts']);
+  assert.equal(url.searchParams.has('config_id'), false);
+});
+test('comment permission requests require explicit opt in', () => {
+  const url = new URL(new MetaClient({ ...config, META_ENABLE_COMMENTS: true }).authorizationUrl('test-state'));
+  assert.deepEqual(url.searchParams.get('scope')?.split(','), ['public_profile', 'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'pages_read_user_content', 'pages_manage_engagement']);
+});
 test('single photo uses published post_id, server token header and caption', async () => {
   const client = new MetaClient(config, fetchFixture((url, init) => {
     assert.equal(url.pathname, '/v27.0/123/photos');
