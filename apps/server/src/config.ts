@@ -10,6 +10,8 @@ const envSchema = z.object({
   META_APP_SECRET: z.string().default(''),
   META_LOGIN_CONFIG_ID: z.string().regex(/^\d*$/).default(''),
   META_GRAPH_VERSION: z.string().regex(/^v\d+\.0$/).default('v27.0'),
+  // Request commenting permissions only when the operator enables that feature.
+  META_ENABLE_COMMENTS: z.enum(['true', 'false']).default('false').transform(v => v === 'true'),
   TOKEN_ENCRYPTION_KEY: z.string().refine(v => Buffer.from(v, 'base64').length === 32, 'TOKEN_ENCRYPTION_KEY must encode exactly 32 bytes'),
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(4),
   PAGE_INTERVAL_SECONDS: z.coerce.number().int().min(15).max(3600).default(15),
@@ -26,5 +28,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   c.PUBLIC_BASE_URL = u.origin;
   return c;
 }
-export const META_SCOPES = ['public_profile', 'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'pages_read_user_content', 'pages_manage_engagement'];
+export const META_SCOPES = ['public_profile', 'pages_show_list', 'pages_read_engagement', 'pages_manage_posts'];
+export const META_COMMENT_SCOPES = ['pages_read_user_content', 'pages_manage_engagement'];
 export function loginConfigured(c: Config): boolean { return Boolean(c.META_APP_ID && c.META_APP_SECRET); }
