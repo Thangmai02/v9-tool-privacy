@@ -30,6 +30,18 @@ npm run dev
 
 Lệnh `dev` chạy **preview** có nhãn rõ ràng. Nội dung được lưu trong trình duyệt để thử thao tác; không dùng token thật. `npm run build:preview` tạo thư mục `studio/` đang được GitHub Pages phục vụ.
 
+## Triển khai không cần VPS bằng Railway (gợi ý cho người mới)
+
+Nếu bạn **chỉ có GitHub**, có thể triển khai trên Railway bằng **2 dịch vụ**: `v9-app` (frontend + API + worker cùng container) và `Postgres`. Dùng start command:
+
+```sh
+node dist/apps/server/src/railway.js
+```
+
+Bản Railway chạy migration tự động lúc khởi động, không cần tự tạo service migrate. **Xem hướng dẫn từng bước:** [docs/RAILWAY_DEPLOY.md](docs/RAILWAY_DEPLOY.md). Có thêm trang [tạo khóa mã hóa trong trình duyệt](setup/secret-generator.html) (không gửi khóa đi), hữu ích nếu bạn chưa có Node.js trên máy.
+
+Railway cần một tài khoản riêng và có thể phát sinh phí tài nguyên; mã nguồn được đưa lên GitHub **không tự tạo tài khoản, thanh toán hoặc cấp quyền Meta**. Để khách hàng ngoài vai trò app đăng nhập thật, Meta vẫn yêu cầu xét duyệt/cấp quyền tương ứng.
+
 ## Chạy thật bằng Docker Compose
 
 Cần một máy chủ có Docker Compose, tên miền trỏ đến máy chủ, và quyền cấu hình app Meta. Backend không thể chạy chỉ bằng bật GitHub Pages.
