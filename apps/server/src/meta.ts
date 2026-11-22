@@ -1,5 +1,5 @@
 import type { Config } from './config.js';
-import { META_SCOPES } from './config.js';
+import { META_COMMENT_SCOPES, META_SCOPES } from './config.js';
 import { makeAppSecretProof } from './crypto.js';
 import type { Media } from '../../../packages/shared/src/index.js';
 
@@ -34,7 +34,7 @@ export class MetaClient {
       response_type: 'code', state
     };
     if (this.config.META_LOGIN_CONFIG_ID) params.config_id = this.config.META_LOGIN_CONFIG_ID;
-    else params.scope = META_SCOPES.join(',');
+    else params.scope = [...META_SCOPES, ...(this.config.META_ENABLE_COMMENTS ? META_COMMENT_SCOPES : [])].join(',');
     u.search = new URLSearchParams(params).toString();
     return u.toString();
   }
