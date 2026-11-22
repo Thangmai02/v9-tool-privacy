@@ -1,6 +1,0 @@
-name = "v9-buffer-api"
-main = "worker.js"
-compatibility_date = "2026-11-22"
-
-[vars]
-ALLOWED_ORIGIN = "https://thangmai02.github.io"
