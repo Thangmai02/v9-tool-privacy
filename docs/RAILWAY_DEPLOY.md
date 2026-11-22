@@ -64,6 +64,7 @@ Vào `v9-app → Variables`, tạo các biến sau (các giá trị trong ngoặ
 | `PAGE_INTERVAL_SECONDS` | `15` |
 | `SESSION_TTL_DAYS` | `7` |
 | `META_GRAPH_VERSION` | `v27.0` (phiên bản đang có trong mã, cần xác minh tương thích khi nâng cấp) |
+| `META_ENABLE_COMMENTS` | `false` khi ưu tiên đăng bài; chỉ đổi `true` khi đã được cấp quyền bình luận và dùng OAuth scope. Nếu có `META_LOGIN_CONFIG_ID`, chỉnh quyền trong Configuration trên Meta. |
 | `META_APP_ID` | App ID thực tế từ Meta Dashboard |
 | `META_APP_SECRET` | App Secret thực tế từ Meta Dashboard |
 | `META_LOGIN_CONFIG_ID` | Facebook Login for Business Configuration ID cấp **User access token**; để trống chỉ nếu app của bạn hỗ trợ scope fallback |
